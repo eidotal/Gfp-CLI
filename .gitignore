@@ -1,0 +1,24 @@
+########################
+# ------ gfp-cli ------
+#
+#  THINK BEFORE CHANGE
+#_______________________
+########################
+
+**/.vscode/
+**/.venv/
+**/.tags/
+**/.ignore/
+
+**/output/
+**/__pycache__/
+**/output-doc/
+**/results/
+**/regression/
+
+**/.env
+**/TODO.md
+
+docker/tmp/
+docker/workspace/
+LazyP4
