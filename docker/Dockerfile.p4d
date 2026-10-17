@@ -1,0 +1,29 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Helix Server (p4d) and CLI (p4)
+RUN curl -fsSL https://cdist2.perforce.com/perforce/r24.1/bin.linux26x86_64/p4d -o /usr/local/bin/p4d \
+    && chmod +x /usr/local/bin/p4d \
+    && curl -fsSL https://cdist2.perforce.com/perforce/r24.1/bin.linux26x86_64/p4 -o /usr/local/bin/p4 \
+    && chmod +x /usr/local/bin/p4 \
+    && mkdir -p /data/p4root
+
+ENV P4ROOT=/data/p4root
+ENV P4PORT=1666
+
+COPY p4d-entrypoint.sh /usr/local/bin/p4d-entrypoint.sh
+RUN chmod +x /usr/local/bin/p4d-entrypoint.sh
+
+EXPOSE 1666
+VOLUME ["/data/p4root"]
+
+# Healthcheck verified with explicit user flag
+HEALTHCHECK --interval=5s --timeout=3s --start-period=35s --retries=8 \
+    CMD p4 -p 127.0.0.1:1666 -u super info -s >/dev/null 2>&1 || exit 1
+
+ENTRYPOINT ["/usr/local/bin/p4d-entrypoint.sh"]

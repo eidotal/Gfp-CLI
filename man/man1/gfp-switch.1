@@ -1,0 +1,130 @@
+.TH GFP-SWITCH 1 "September 2026" "gfp-cli 1.0.0" "User Commands"
+.SH NAME
+gfp-switch \- Switch client workspace to a target Perforce stream or create and switch to a new stream
+.SH SYNOPSIS
+.B gfp switch
+[\fB\-c\fR | \fB\-\-create\fR]
+[\fB\-l\fR | \fB\-\-list\fR]
+[\fB\-P\fR \fIPARENT\fR | \fB\-\-parent\fR \fIPARENT\fR]
+[\fB\-t\fR \fITYPE\fR | \fB\-\-type\fR \fITYPE\fR]
+[\fB\-s\fR | \fB\-\-stash\fR]
+[\fIstream\fR]
+.br
+.B gfp sw
+\fIoptions...\fR
+.SH DESCRIPTION
+.B gfp switch
+translates the familiar Git branch switching mental model (\fBgit switch\fR, \fBgit checkout <branch>\fR) into native Perforce Helix Core stream switching (\fBp4 switch\fR).
+
+In Perforce Stream depots, branches are represented as streams (\fB//stream_depot/stream_name\fR). Switching streams updates the client workspace view mapping and syncs local files to match the head revision of the target stream.
+
+.SS Shorthand Stream Name Resolution
+Developers can supply short stream names (e.g. \fBmain\fR, \fBdev\fR, or \fBfeature\-login\fR).
+.B gfp
+automatically interrogates the Perforce server (\fBp4 streams\fR) and resolves the short name into the fully qualified depot stream path (e.g. \fB//stream/feature\-login\fR), eliminating the need to type full depot specifications.
+
+.SS Stream Creation on Switch (\-c, \-\-create)
+Passing
+.B \-c
+or
+.B \-\-create
+instructs
+.B gfp
+to create a new Perforce stream specification before switching to it. If the parent stream is omitted,
+.B gfp
+automatically detects the active stream and designates it as the parent stream.
+
+.SS Safe Stream Switching with Auto-Stash (\-s, \-\-stash)
+When switching streams with uncommitted workspace modifications, file conflicts can occur. Passing
+.B \-s
+or
+.B \-\-stash
+automatically shelves currently opened workspace changes (\fBp4 shelve\fR) before switching streams, safely clears the workspace, switches to the target stream, and restores the shelved files into the workspace on the target stream.
+
+.SH OPTIONS
+.TP
+.I stream
+Target stream name or full depot stream path to switch to.
+.TP
+.BR \-c ", " \-\-create
+Create a new stream specification before switching.
+.TP
+.BR \-l ", " \-\-list
+List all streams in the depot available for switching, highlighting the currently active stream.
+.TP
+.BR \-P " " \fIPARENT\fR ", " \-\-parent " " \fIPARENT\fR
+Specify the parent stream depot path when creating a new stream (e.g. \fB//stream/main\fR).
+.TP
+.BR \-t " " \fITYPE\fR ", " \-\-type " " \fITYPE\fR
+Specify the stream type when creating a new stream (default: \fBdevelopment\fR).
+.TP
+.BR \-s ", " \-\-stash
+Automatically shelve open workspace modifications before switching streams and unshelve them after the switch completes.
+
+.SH STREAM TYPES
+When creating streams with \fB\-c\fR, the following stream types are supported:
+.TP
+.B development
+A child stream intended for day-to-day feature development. Changes flow up to parent streams.
+.TP
+.B release
+A stable, production-bound stream. Changes flow down from mainline.
+.TP
+.B mainline
+A stable trunk stream serving as the central integration backbone.
+.TP
+.B virtual
+A lightweight, filtered view or alias of another stream.
+.TP
+.B task
+A lightweight, private branch stream intended for short-lived feature spikes or bugfixes. Task streams reduce server metadata overhead.
+
+.SH LIFECYCLE HOOKS
+.TP
+.BR pre\-switch ", " pre_switch
+Executed immediately prior to switching streams. If the hook exits with a non-zero status, stream switching is aborted.
+.TP
+.BR post\-switch ", " post_switch
+Executed immediately after successfully switching the client workspace to the target stream.
+
+.SH EXAMPLES
+.TP
+.B Switch to an existing stream using shorthand name:
+.nf
+$ gfp switch dev
+.fi
+
+.TP
+.B Switch to a stream using full depot path:
+.nf
+$ gfp switch //stream/release-v1.0
+.fi
+
+.TP
+.B List switchable streams:
+.nf
+$ gfp switch -l
+.fi
+
+.TP
+.B Create a new development stream branching from mainline and switch to it:
+.nf
+$ gfp switch -c -P //stream/main feature-metrics
+.fi
+
+.TP
+.B Switch streams safely with auto-stashing of local changes:
+.nf
+$ gfp switch -s dev
+.fi
+
+.SH SEE ALSO
+.BR gfp (1),
+.BR gfp\-branch (1),
+.BR gfp\-stash (1),
+.BR p4 (1),
+.BR git\-switch (1)
+.SH AUTHOR
+eidotal
+.SH COPYRIGHT
+Copyright \(co 2026 eidotal. Released under the Apache License, Version 2.0.

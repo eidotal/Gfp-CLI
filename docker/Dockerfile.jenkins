@@ -1,0 +1,51 @@
+FROM jenkins/jenkins:lts-jdk21
+
+USER root
+
+# Install Python 3, build tools, curl, and networking utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        python3-venv \
+        curl \
+        ca-certificates \
+        make \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Perforce CLI client
+RUN curl -fsSL https://cdist2.perforce.com/perforce/r24.1/bin.linux26x86_64/p4 -o /usr/local/bin/p4 \
+    && chmod +x /usr/local/bin/p4
+
+# Set up global virtual environment accessible to all users
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Install Python quality and test packages
+RUN pip install --no-cache-dir flake8 black pylint pytest && chmod -R a+rx /opt/venv
+
+USER jenkins
+
+# Pre-install Jenkins plugins
+RUN jenkins-plugin-cli --plugins \
+    configuration-as-code \
+    job-dsl \
+    workflow-aggregator \
+    git \
+    p4 \
+    ansicolor \
+    junit \
+    generic-webhook-trigger \
+    pipeline-graph-view \
+    pipeline-stage-view \
+    ws-cleanup \
+    pipeline-utility-steps \
+    theme-manager \
+    lockable-resources \
+    warnings-ng \
+    timestamper \
+    credentials-binding \
+    htmlpublisher \
+    mailer \
+    email-ext

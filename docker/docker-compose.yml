@@ -1,0 +1,71 @@
+services:
+  p4server:
+    build:
+      context: .
+      dockerfile: Dockerfile.p4d
+    container_name: p4server
+    hostname: p4server
+    ports:
+      - "1666:1666"
+    volumes:
+      - p4data:/data/p4root
+      - ./p4-init-config.json:/etc/perforce/p4-init-config.json:ro
+    environment:
+      - GMAIL_USER=${GMAIL_USER:-}
+    restart: unless-stopped
+    networks:
+      - p4net
+
+  p4client:
+    build:
+      context: .
+      dockerfile: Dockerfile.p4client
+    container_name: p4client
+    hostname: p4client
+    depends_on:
+      p4server:
+        condition: service_healthy
+    ports:
+      - "6080:6080"
+      - "5901:5901"
+    volumes:
+      - ./workspace:/home/devuser/workspace
+      - ..:/opt/gfp-cli:ro
+    shm_size: "1gb"
+    restart: unless-stopped
+    networks:
+      - p4net
+
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    container_name: jenkins
+    hostname: jenkins
+    depends_on:
+      p4server:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      - ./jenkins_config:/usr/share/jenkins/ref/casc_configs:ro
+    environment:
+      - P4PORT=p4server:1666
+      - P4USER=jenkins_bot
+      - CASC_JENKINS_CONFIG=/usr/share/jenkins/ref/casc_configs/jenkins.yaml
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - GMAIL_USER=${GMAIL_USER}
+      - GMAIL_APP_PASSWORD=${GMAIL_APP_PASSWORD}
+    restart: unless-stopped
+    networks:
+      - p4net
+
+volumes:
+  p4data:
+  jenkins_data:
+
+networks:
+  p4net:
+    driver: bridge

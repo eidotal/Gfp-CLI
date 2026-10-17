@@ -1,0 +1,19 @@
+# ==============================================================================
+# DPC-P4 Python Toolchain & Verification Dependencies
+# ==============================================================================
+# Usage:
+#   python3 -m venv .venv
+#   source .venv/bin/activate
+#   pip install -r python_requirements.txt
+# ==============================================================================
+
+# Fast Static Analysis, Linting & Formatting
+ruff>=0.5.0
+
+mypy>=1.10.0
+
+# Automated Test Runner
+pytest>=8.0.0
+
+# Packet Manipulation, Generation & Dissection
+scapy>=2.5.0

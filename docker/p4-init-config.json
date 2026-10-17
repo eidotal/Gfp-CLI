@@ -1,0 +1,90 @@
+{
+    "users": [
+        {
+            "user": "super",
+            "email": "${GMAIL_USER}",
+            "fullname": "Cluster Administrator",
+            "type": "standard"
+        },
+        {
+            "user": "jenkins_bot",
+            "email": "${GMAIL_USER}",
+            "fullname": "Jenkins CI Bot Service",
+            "type": "standard"
+        },
+        {
+            "user": "devuser",
+            "email": "${GMAIL_USER}",
+            "fullname": "Developer Sandbox User",
+            "type": "standard"
+        }
+    ],
+    "groups": [
+        {
+            "group": "ci_service_group",
+            "max_results": "unset",
+            "max_scan_rows": "unset",
+            "max_lock_time": "unset",
+            "timeout": "unlimited",
+            "users": [
+                "jenkins_bot"
+            ]
+        },
+        {
+            "group": "developers",
+            "max_results": 100000,
+            "max_scan_rows": 500000,
+            "max_lock_time": 30000,
+            "timeout": 43200,
+            "users": [
+                "devuser"
+            ]
+        },
+        {
+            "group": "administrators",
+            "max_results": "unset",
+            "max_scan_rows": "unset",
+            "max_lock_time": "unset",
+            "timeout": 7200,
+            "users": [
+                "super"
+            ]
+        }
+    ],
+    "protections": [
+        "write user * * //...",
+        "write group developers * //...",
+        "admin group ci_service_group * //...",
+        "admin user jenkins_bot * //...",
+        "super user super * //..."
+    ],
+    "depots": [
+        {
+            "name": "stream",
+            "type": "stream",
+            "depth": "//stream/1",
+            "map": "stream/...",
+            "description": "Primary Stream Depot"
+        },
+        {
+            "name": "depot",
+            "type": "local",
+            "map": "depot/...",
+            "description": "Legacy Classic Depot"
+        }
+    ],
+    "streams": [
+        {
+            "stream": "//stream/main",
+            "type": "mainline",
+            "parent": "none",
+            "description": "Main production stream"
+        },
+        {
+            "stream": "//stream/dev",
+            "type": "development",
+            "parent": "//stream/main",
+            "description": "Development child stream"
+        }
+    ]
+}

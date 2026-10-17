@@ -1,0 +1,24 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 140
+
+[*.{sv,svh,zsh,sh,py,go}]
+indent_size = 4
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+max_line_length = off
+
+[*.{md,adoc}]
+trim_trailing_whitespace = false
+max_line_length = off

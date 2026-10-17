@@ -1,0 +1,103 @@
+.TH GFP-COMMIT 1 "September 2026" "gfp-cli 1.0.0" "User Commands"
+.SH NAME
+gfp-commit \- Record staged or working changes into a Perforce pending changelist
+.SH SYNOPSIS
+.B gfp commit
+[\fB\-m\fR \fIMESSAGE\fR | \fB\-\-message\fR \fIMESSAGE\fR]
+[\fB\-a\fR | \fB\-\-all\fR]
+[\fB\-\-amend\fR]
+[\fB\-c\fR \fICL\fR | \fB\-\-cl\fR \fICL\fR]
+[\fIfiles...\fR]
+.br
+.B gfp ci
+\fIoptions...\fR
+.SH DESCRIPTION
+.B gfp commit
+translates the standard Git commit mental model into native Perforce Helix Core pending changelists.
+
+In Git, committing records a snapshot of the staged index into the local Git repository history. In Perforce, work in progress is organized into numbered pending changelists on the server.
+.B gfp commit
+creates a new numbered pending changelist (\fBp4 change \-i\fR) with the provided description and automatically associates the opened files into that changelist (\fBp4 reopen \-c \fICL\fR).
+
+.SS Selective File Commits & Rollback Safety
+When target file paths are specified (\fBgfp commit \fIfile1 file2\fR \fB\-m "\fIMESSAGE\fB"\fR),
+.B gfp
+pre-validates the target files against currently opened workspace files. If target files cannot be reconciled or reopened into the newly created changelist,
+.B gfp
+automatically rolls back and purges the empty changelist (\fBp4 change \-d \fICL\fR), ensuring no dangling or empty changelists are orphaned on the Perforce server.
+
+.SS Amending Changelists
+Passing
+.B \-\-amend
+allows developers to update the description of the most recent pending changelist (or the changelist ID passed via \fB\-c\fR / \fB\-\-cl\fR). If files are also specified or \fB\-a\fR is used, those files are reopened into the changelist being amended.
+
+.SH OPTIONS
+.TP
+.BR \-m " " \fIMESSAGE\fR ", " \-\-message " " \fIMESSAGE\fR
+The commit description text. If omitted,
+.B gfp
+creates the changelist with a default timestamped summary.
+.TP
+.BR \-a ", " \-\-all
+Automatically reconcile all modified and deleted workspace files (\fBp4 reconcile\fR) before creating or updating the changelist.
+.TP
+.B \-\-amend
+Amend the description or file list of an existing pending changelist instead of creating a new one.
+.TP
+.BR \-c " " \fICL\fR ", " \-\-cl " " \fICL\fR
+Specify the exact pending changelist ID to amend. When omitted with \fB\-\-amend\fR,
+.B gfp
+targets the most recent pending changelist owned by the active client workspace.
+.TP
+.I files...
+Optional file or directory paths to include in the changelist. When omitted, all currently opened files in the default changelist are included.
+
+.SH LIFECYCLE HOOKS
+.TP
+.BR pre\-commit ", " pre_commit
+Executed prior to changelist creation or amendment. If the hook script exits with a non-zero exit code, changelist creation is aborted immediately.
+.TP
+.BR post\-commit ", " post_commit
+Executed immediately after the changelist has been successfully created or amended.
+
+.SH EXAMPLES
+.TP
+.B Commit currently opened files into a new pending changelist:
+.nf
+$ gfp commit -m "feat(parser): add JSON configuration loader"
+.fi
+
+.TP
+.B Stage all workspace modifications and commit in a single step:
+.nf
+$ gfp commit -a -m "refactor: simplify client workspace resolution"
+.fi
+
+.TP
+.B Commit only specific modified files:
+.nf
+$ gfp commit src/auth.py tests/test_auth.py -m "feat: user authentication"
+.fi
+
+.TP
+.B Amend the commit message of the most recent pending changelist:
+.nf
+$ gfp commit --amend -m "feat(parser): add JSON and YAML configuration loader"
+.fi
+
+.TP
+.B Amend a specific pending changelist:
+.nf
+$ gfp commit --amend -c 12345 -m "fix: resolve edge-case in path escaping"
+.fi
+
+.SH SEE ALSO
+.BR gfp (1),
+.BR gfp\-push (1),
+.BR gfp\-restore (1),
+.BR p4 (1),
+.BR git\-commit (1)
+.SH AUTHOR
+eidotal
+.SH COPYRIGHT
+Copyright \(co 2026 eidotal. Released under the Apache License, Version 2.0.

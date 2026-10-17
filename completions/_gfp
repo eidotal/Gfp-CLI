@@ -1,0 +1,234 @@
+#compdef gfp
+# Zsh completion script for gfp
+# Place this file in your $fpath (e.g., ~/.zfunc/_gfp or /usr/local/share/zsh/site-functions/_gfp)
+
+_gfp() {
+    local -a commands
+    commands=(
+        'status:Show workspace status and opened changes'
+        'commit:Create or amend numbered changelist with commit message'
+        'add:Stage/open files for add, edit, delete, or reconcile'
+        'diff:Show unified diff of modified files against depot'
+        'log:Display changelist history'
+        'pull:Sync latest revisions and resolve safe conflicts'
+        'push:Submit changelist to the depot'
+        'checkout:Discard local modifications (p4 revert)'
+        'stash:Shelve or unshelve working changes'
+        'show:Show changelist details and unified diff'
+        'clean:Remove untracked and unreconciled files from workspace'
+        'blame:Show revision and author for each line of a file'
+        'branch:List, create, or delete Perforce streams'
+        'switch:Switch workspace to a different stream'
+        'clone:Clone a repository/stream into a new directory and create client workspace'
+        'reopen:Move opened files between changelists'
+        'restore:Restore working tree files or discard/delete pending changelists'
+        'resolve:Resolve conflicts between workspace and depot revisions'
+        'rebase:Rebase, squash, or interactively manipulate pending changelists'
+        'completion:Generate shell autocompletion script'
+        'st:Alias for status'
+        'ci:Alias for commit'
+        'co:Alias for checkout'
+        'br:Alias for branch'
+        'di:Alias for diff'
+        'sw:Alias for switch'
+    )
+
+    _arguments -C \
+        '1: :->command' \
+        '*:: :->args'
+
+    case $state in
+        command)
+            _describe -t commands 'gfp command' commands
+            ;;
+        args)
+            case $words[1] in
+                status|st)
+                    _arguments \
+                        '(-c --cl --pending)'{-c,--cl,--pending}'[Display pending changelists with opened and shelved files]' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                add)
+                    _arguments \
+                        '(-A --all)'{-A,--all}'[Stage all changes across entire workspace]' \
+                        '(-u --update)'{-u,--update}'[Stage modified and deleted files]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:file:_files'
+                    ;;
+                commit|ci)
+                    _arguments \
+                        '(-m --message)'{-m,--message}'[Commit description]:message:' \
+                        '(-a --all)'{-a,--all}'[Stage all changes before commit]' \
+                        '--amend[Amend existing pending changelist]' \
+                        '(-c --cl)'{-c,--cl}'[Specific pending changelist ID]:changelist:_gfp_pending_cls' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:file:_files'
+                    ;;
+                diff|di)
+                    _arguments \
+                        '(-c --cl)'{-c,--cl}'[Diff specific changelist ID]:changelist:_gfp_all_cls' \
+                        '--stat[Show diffstat summary]' \
+                        '--color[Show colored diff]:when:(always never auto)' \
+                        '--no-color[Turn off colored diff]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '::path:_files'
+                    ;;
+                log)
+                    _arguments \
+                        '(-n --max-count)'{-n,--max-count}'[Number of changes to show]:count:' \
+                        '(-a --all)'{-a,--all}'[Display full changelist history without truncation]' \
+                        '--oneline[Compact one-line format]' \
+                        '(-p --patch)'{-p,--patch}'[Show unified diff/patch]' \
+                        '(-u --user --author)'{-u,--user,--author}'[Filter by user]:user:' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '::path:_files'
+                    ;;
+                pull)
+                    _arguments \
+                        '(-f --force)'{-f,--force}'[Force sync files from depot]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Preview sync and resolve without making changes]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:path:_files'
+                    ;;
+                push)
+                    _arguments \
+                        '(-c --cl)'{-c,--cl}'[Specific changelist ID to submit]:changelist:_gfp_pending_cls' \
+                        '(-f --force)'{-f,--force}'[Force direct submit to depot (bypassing gated queue)]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Perform dry run without submitting]' \
+                        '--gated[Submit via Jenkins gated submit queue (default)]' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                checkout|co)
+                    _arguments \
+                        '(-f --force)'{-f,--force}'[Reconcile unopened local modifications first]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:file:_files'
+                    ;;
+                stash)
+                    _arguments \
+                        '1:action:(save pop list drop show)' \
+                        '(-m --message)'{-m,--message}'[Stash message]:message:' \
+                        '(-c --cl)'{-c,--cl}'[Specific changelist ID]:changelist:_gfp_shelved_cls' \
+                        '(-k --keep)'{-k,--keep}'[Keep opened files in workspace]' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                show)
+                    _arguments \
+                        '(-s --stat)'{-s,--stat}'[Show summary without full diff]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '::changelist:_gfp_all_cls'
+                    ;;
+                clean)
+                    _arguments \
+                        '(-f --force)'{-f,--force}'[Force deletion/cleaning]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Dry run preview]' \
+                        '-d[Remove untracked directories]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:path:_files'
+                    ;;
+                blame)
+                    _arguments \
+                        '(-c --cl --rev)'{-c,--cl,--rev}'[Changelist or revision]:cl_rev:' \
+                        '(-u --user)'{-u,--user}'[Display author]' \
+                        '(-d --date)'{-d,--date}'[Display date]' \
+                        '(-L --line-range)'{-L,--line-range}'[Line range]:range:' \
+                        '(-q --quiet)'{-q,--quiet}'[Suppress file headers]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '1:file:_files'
+                    ;;
+                branch|br)
+                    _arguments \
+                        '(-a --all)'{-a,--all}'[List all depot streams]' \
+                        '(-d --delete)'{-d,--delete}'[Delete specified stream]' \
+                        '(-P --parent)'{-P,--parent}'[Parent stream path]:stream:_gfp_streams' \
+                        '(-t --type)'{-t,--type}'[Stream type]:type:(development release mainline virtual task)' \
+                        '(-v --verbose)'{-v,--verbose}'[Verbose stream details]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '::name:_gfp_streams'
+                    ;;
+                switch|sw)
+                    _arguments \
+                        '(-c --create)'{-c,--create}'[Create new stream before switching]' \
+                        '(-l --list)'{-l,--list}'[List switchable streams]' \
+                        '(-P --parent)'{-P,--parent}'[Parent stream path]:stream:_gfp_streams' \
+                        '(-t --type)'{-t,--type}'[Stream type]:type:(development release mainline virtual task)' \
+                        '(-s --stash)'{-s,--stash}'[Automatically shelve before switching and unshelve after]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '::stream:_gfp_streams'
+                    ;;
+                clone)
+                    _arguments \
+                        '(-c --client)'{-c,--client}'[Name of client workspace to create]:client:' \
+                        '(-d --dir)'{-d,--dir}'[Directory to create and clone into]:dir:_files -/' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '1:repository:_gfp_streams' \
+                        '::directory:_files -/'
+                    ;;
+                reopen)
+                    _arguments \
+                        '(-c --cl)'{-c,--cl}'[Target changelist ID]:changelist:_gfp_pending_cls' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:file:_files'
+                    ;;
+                restore)
+                    _arguments \
+                        '(-k --keep)'{-k,--keep}'[Keep disk modifications when reverting changelist files]' \
+                        '(-s --staged)'{-s,--staged}'[Unstage files while keeping disk modifications]' \
+                        '(-c --cl)'{-c,--cl}'[Pending changelist ID to revert and delete]:changelist:_gfp_pending_cls' \
+                        '(-f --force)'{-f,--force}'[Force revert or discard of files]' \
+                        '(-W --worktree)'{-W,--worktree}'[Discard working tree modifications]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:file:_files'
+                    ;;
+                resolve)
+                    _arguments \
+                        '--ours[Accept workspace version and ignore depot changes]' \
+                        '--theirs[Accept depot version and overwrite workspace changes]' \
+                        '--am[Automatically resolve safe changes without conflicts]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Preview what would be resolved without making changes]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:file:_files'
+                    ;;
+                rebase)
+                    _arguments \
+                        '(-s --squash)'{-s,--squash}'[Source pending changelist ID to squash]:changelist:_gfp_pending_cls' \
+                        '--onto[Target pending changelist ID]:changelist:_gfp_pending_cls' \
+                        '(-i --interactive)'{-i,--interactive}'[Interactively manipulate pending changelists]' \
+                        '(-m --message)'{-m,--message}'[New commit description]:message:' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                completion)
+                    _arguments \
+                        '1:shell:(bash zsh tcsh)' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_gfp_pending_cls() {
+    local -a cls
+    cls=($(p4 changes -s pending 2>/dev/null | awk '{print $2}'))
+    _describe -t cls 'pending changelist' cls
+}
+
+_gfp_shelved_cls() {
+    local -a cls
+    cls=($(p4 changes -s shelved 2>/dev/null | awk '{print $2}'))
+    _describe -t cls 'shelved changelist' cls
+}
+
+_gfp_all_cls() {
+    local -a cls
+    cls=($(p4 changes -m 30 2>/dev/null | awk '{print $2}'))
+    _describe -t cls 'changelist' cls
+}
+
+_gfp_streams() {
+    local -a streams
+    streams=($(p4 streams 2>/dev/null | awk '{print $2}'))
+    _describe -t streams 'stream' streams
+}
+
+_gfp "$@"

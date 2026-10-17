@@ -1,0 +1,117 @@
+.TH GFP-PUSH 1 "September 2026" "gfp-cli 1.0.0" "User Commands"
+.SH NAME
+gfp-push \- Submit changelist to the Perforce depot (via Jenkins gated submit queue or direct submit)
+.SH SYNOPSIS
+.B gfp push
+[\fB\-c\fR \fICL\fR | \fB\-\-cl\fR \fICL\fR]
+[\fB\-f\fR | \fB\-\-force\fR]
+[\fB\-n\fR | \fB\-\-dry\-run\fR]
+[\fB\-\-gated\fR]
+.SH DESCRIPTION
+.B gfp push
+translates the standard Git push mental model into Perforce changelist submissions.
+
+Perforce utilizes an atomic changelist submission model (\fBp4 submit\fR). In enterprise environments, directly submitting untested changes to mainline streams can break builds. To maintain continuous mainline stability,
+.B gfp push
+supports a dual-submission architecture:
+
+.SS 1. Gated Submit Queue (Default)
+In gated mode (the default),
+.B gfp push
+shelves the pending changelist (\fBp4 shelve\fR) onto the Perforce server and notifies the CI server (e.g. Jenkins). The automated pipeline unshelves the changelist into an isolated test environment, runs linters and test suites, and, upon successful verification, submits the changelist atomically to the depot (\fBp4 submit \-e\fR) on behalf of the developer via a service bot.
+
+The submit queue URL is configured via \fBGFP_SUBMIT_QUEUE_URL\fR or the \fBsubmit_queue_url\fR setting in \fB.gfp/config.json\fR.
+
+.SS 2. Direct Force Submission (\-f, \-\-force)
+Passing
+.B \-f
+or
+.B \-\-force
+bypasses the Jenkins gated submit queue and directly submits the changelist to the depot (\fBp4 submit\fR). This is equivalent to standard Perforce submission or \fBgit push\fR to a repository without pre-receive branch protection.
+
+.SS Automatic Changelist Discovery
+If
+.BR \-c " / " \-\-cl
+is omitted,
+.B gfp push
+automatically locates the most recent pending changelist owned by the active Perforce client workspace and user.
+
+.SH OPTIONS
+.TP
+.BR \-c " " \fICL\fR ", " \-\-cl " " \fICL\fR
+Specific pending changelist ID to submit. If omitted,
+.B gfp
+targets the most recent pending changelist.
+.TP
+.BR \-f ", " \-\-force
+Force direct submission to the depot (\fBp4 submit\fR), bypassing the Jenkins gated submit queue.
+.TP
+.BR \-n ", " \-\-dry\-run
+Simulate the push operation. Displays whether changes would be shelved for the gated queue or force-submitted directly, and lists all files contained within the target changelist.
+.TP
+.B \-\-gated
+Explicitly request submission via the Jenkins gated submit queue. This is the default push behavior.
+
+.SH ENVIRONMENT VARIABLES
+.TP
+.B GFP_SUBMIT_QUEUE_URL
+The HTTP or HTTPS URL of the Jenkins gated submit queue validation job.
+.TP
+.B GFP_PUSH_MODE
+Default push behavior (\fBgated\fR or \fBdirect\fR).
+.TP
+.B P4PORT
+Perforce server address.
+.TP
+.B P4USER
+Perforce user name.
+.TP
+.B P4CLIENT
+Perforce client workspace name.
+
+.SH CONFIGURATION
+Configuration options may be placed in \fB.gfp/config.json\fR (workspace-scoped) or \fB~/.gfp/config.json\fR (user-scoped):
+.PP
+.nf
+{
+    "submit_queue_url": "http://jenkins.corp.local/job/gfp-submit-queue/",
+    "push_mode": "gated"
+}
+.fi
+
+.SH LIFECYCLE HOOKS
+.TP
+.BR pre\-push ", " pre_push
+Executed immediately before shelving or submitting the changelist. If the hook exits with a non-zero status, submission is aborted.
+.TP
+.BR post\-push ", " post_push
+Executed after the changelist has been successfully shelved (gated queue) or submitted (direct mode).
+
+.SH EXAMPLES
+.TP
+.B Submit current pending changelist via the gated submit queue:
+.nf
+$ gfp push
+.fi
+
+.TP
+.B Dry run preview of what would be submitted:
+.nf
+$ gfp push -n
+.fi
+
+.TP
+.B Force direct submission of a specific changelist to depot:
+.nf
+$ gfp push -f -c 12345
+.fi
+
+.SH SEE ALSO
+.BR gfp (1),
+.BR gfp\-commit (1),
+.BR p4 (1),
+.BR git\-push (1)
+.SH AUTHOR
+eidotal
+.SH COPYRIGHT
+Copyright \(co 2026 eidotal. Released under the Apache License, Version 2.0.

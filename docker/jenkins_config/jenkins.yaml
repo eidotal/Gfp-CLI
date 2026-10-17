@@ -1,0 +1,84 @@
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "gmail-smtp"
+              username: "${GMAIL_USER}"
+              password: "${GMAIL_APP_PASSWORD}"
+              description: "Gmail SMTP Credentials"
+
+jenkins:
+  systemMessage: "Perforce Helix Core & gfp-cli Gated Submit Queue CI/CD Sandbox"
+  numExecutors: 2
+  mode: NORMAL
+  scmCheckoutRetryCount: 2
+  securityRealm:
+    none: {}
+  authorizationStrategy:
+    unsecured: {}
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+    adminAddress: "Jenkins-CI <${GMAIL_USER}>"
+  mailer:
+    smtpHost: "smtp.gmail.com"
+    smtpPort: "465"
+    useSsl: true
+    authentication:
+      username: "${GMAIL_USER}"
+      password: "${GMAIL_APP_PASSWORD}"
+  email-ext:
+    defaultContentType: "text/html"
+    mailAccount:
+      address: "${GMAIL_USER}"
+      smtpHost: "smtp.gmail.com"
+      smtpPort: "465"
+      useSsl: true
+      credentialsId: "gmail-smtp"
+
+jobs:
+  - script: >
+      pipelineJob('gfp-submit-queue') {
+          description('Gated submit queue that verifies shelved Perforce changelists before submitting to //stream/main')
+          parameters {
+              stringParam('CHANGELIST', '', 'Shelved changelist ID to verify and commit')
+              stringParam('USER', 'devuser', 'Author of the changelist')
+              stringParam('STREAM', '//stream/main', 'Target destination stream')
+              stringParam('NOTIFICATION_EMAIL', '', 'Email address to send build completion report (defaults to Perforce user email)')
+          }
+          triggers {
+              genericTrigger {
+                  genericVariables {
+                      genericVariable {
+                          key('CHANGELIST')
+                          value('$.changelist')
+                          expressionType('JSONPath')
+                      }
+                      genericVariable {
+                          key('USER')
+                          value('$.user')
+                          expressionType('JSONPath')
+                      }
+                      genericVariable {
+                          key('NOTIFICATION_EMAIL')
+                          value('$.email')
+                          expressionType('JSONPath')
+                      }
+                  }
+                  token('gfp-submit-token')
+                  causeString('Triggered by Perforce shelve from $USER (CL $CHANGELIST)')
+                  printContributedVariables(true)
+                  printPostContent(true)
+                  silentResponse(false)
+              }
+          }
+          definition {
+              cps {
+                  script(new File('/usr/share/jenkins/ref/casc_configs/Jenkinsfile').text)
+                  sandbox(true)
+              }
+          }
+      }

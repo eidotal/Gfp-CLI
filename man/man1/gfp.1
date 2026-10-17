@@ -1,0 +1,499 @@
+.TH GFP 1 "September 2026" "gfp-cli 1.0.0" "User Commands"
+.SH NAME
+gfp \- Git-compatible CLI layer and command wrapper for Perforce Helix Core (p4)
+.SH SYNOPSIS
+.B gfp
+[\fB\-h\fR | \fB\-\-help\fR]
+.br
+.B gfp
+\fIsubcommand\fR [\fIoptions\fR] [\fIarguments\fR]
+.SH DESCRIPTION
+.B gfp
+is a modular, extensible command-line wrapper that translates standard Git workflows, mental models, and lifecycle hooks into native Perforce Helix Core (\fBp4\fR) operations. It enables software engineers familiar with Git to interact seamlessly with Perforce repositories without sacrificing native Perforce capabilities such as changelists, streams, and server-side shelving.
+
+.B gfp
+requires zero server-side modifications or background daemons. It operates directly as an intelligent client layer over the standard Perforce CLI (\fBp4\fR).
+
+.SS Workspace Root Resolution
+When invoked,
+.B gfp
+resolves the active workspace root in the following precedence order:
+.IP 1. 4
+A directory in the current working directory hierarchy containing a \fB.gfp\fR marker directory.
+.IP 2. 4
+The \fBClient root:\fR directory reported by \fBp4 info\fR.
+.IP 3. 4
+The current working directory (\fIcwd\fR) as a fallback.
+
+.SH SUBCOMMANDS
+.TP
+.BR status ", " st
+Display the workspace state, including opened files (add, edit, delete), untracked unreconciled files, active client workspace, and pending changelists.
+.RS
+.TP
+.BR \-c ", " \-\-cl ", " \-\-pending
+Display all numbered pending changelists associated with the workspace, including both opened and shelved files.
+.RE
+
+.TP
+.BR add
+Stage/open files in the Perforce client workspace for add, edit, or delete via \fBp4 reconcile\fR.
+.RS
+.TP
+.BR \-A ", " \-\-all
+Stage all modifications and untracked files across the entire workspace.
+.TP
+.BR \-u ", " \-\-update
+Stage modified and deleted files only, ignoring untracked files.
+.RE
+
+.TP
+.BR commit ", " ci
+Create a new numbered pending changelist with a commit description, or amend an existing changelist. See \fBgfp\-commit\fR(1).
+.RS
+.TP
+.BR \-m " " \fIMESSAGE\fR ", " \-\-message " " \fIMESSAGE\fR
+Changelist description text.
+.TP
+.BR \-a ", " \-\-all
+Automatically reconcile and stage all workspace changes before committing.
+.TP
+.B \-\-amend
+Update the description or file list of an existing pending changelist.
+.TP
+.BR \-c " " \fICL\fR ", " \-\-cl " " \fICL\fR
+Target pending changelist ID to amend.
+.RE
+
+.TP
+.BR diff ", " di
+Show unified diff of modified files in the workspace against the depot head revision.
+.RS
+.TP
+.BR \-c " " \fICL\fR ", " \-\-cl " " \fICL\fR
+Display diffs for files within a specific pending or submitted changelist ID.
+.TP
+.B \-\-stat
+Generate a diffstat histogram summarizing added, modified, and deleted lines per file.
+.TP
+.BR \-\-color "[=\fIWHEN\fR]"
+Show colored diff. \fIWHEN\fR can be \fBalways\fR, \fBnever\fR, or \fBauto\fR (default: auto).
+.TP
+.B \-\-no\-color
+Turn off colored diff output (equivalent to \fB\-\-color=never\fR).
+.RE
+
+.TP
+.BR log
+Display submitted changelist history in reverse chronological order.
+.RS
+.TP
+.BR \-n " " \fICOUNT\fR ", " \-\-max\-count " " \fICOUNT\fR
+Limit output to the specified number of changelists (default: 30).
+.TP
+.BR \-a ", " \-\-all
+Display full changelist descriptions without truncation.
+.TP
+.B \-\-oneline
+Display compact one-line log format (<CL> <author> <date> <summary>).
+.TP
+.BR \-p ", " \-\-patch
+Display inline unified diff patches for each listed changelist.
+.TP
+.BR \-u " " \fIUSER\fR ", " \-\-user " " \fIUSER\fR ", " \-\-author " " \fIUSER\fR
+Filter history by changelist author.
+.RE
+
+.TP
+.BR pull
+Sync latest depot revisions to the workspace and automatically merge non-conflicting edits (\fBp4 sync\fR followed by \fBp4 resolve \-am\fR).
+.RS
+.TP
+.BR \-f ", " \-\-force
+Force resynchronization of all workspace files from the depot (\fBp4 sync \-f\fR).
+.TP
+.BR \-n ", " \-\-dry\-run
+Preview files that would be updated without transferring data from the server.
+.RE
+
+.TP
+.BR push
+Submit changelists to the depot. By default, shelves the changelist to trigger Jenkins gated CI submit queue validation, or directly submits with \fB\-f\fR. See \fBgfp\-push\fR(1).
+.RS
+.TP
+.BR \-c " " \fICL\fR ", " \-\-cl " " \fICL\fR
+Specific pending changelist ID to push (defaults to the most recent pending changelist).
+.TP
+.BR \-f ", " \-\-force
+Bypass the Jenkins gated submit queue and submit directly to the depot (\fBp4 submit\fR).
+.TP
+.BR \-n ", " \-\-dry\-run
+Preview push actions without shelving or submitting.
+.TP
+.B \-\-gated
+Explicitly request submission via the Jenkins gated submit queue (default behavior).
+.RE
+
+.TP
+.BR checkout ", " co
+Discard local modifications to opened files by reverting them to the depot head revision (\fBp4 revert\fR).
+.RS
+.TP
+.BR \-f ", " \-\-force
+Reconcile unopened local changes into opened edits first before reverting.
+.RE
+
+.TP
+.BR stash
+Shelve or unshelve working changes to/from the Perforce server.
+.RS
+.TP
+.B save
+Shelve currently opened files into a pending changelist and revert the local workspace files.
+.TP
+.B pop
+Unshelve files from a shelved changelist into the workspace and delete the server-side shelf.
+.TP
+.B list
+List all shelved changelists associated with the current client workspace or user.
+.TP
+.B drop
+Delete shelved files from a changelist on the Perforce server (\fBp4 shelve \-d\fR).
+.TP
+.B show
+Display files and unified diffs of a shelved changelist.
+.TP
+.BR \-m " " \fIMESSAGE\fR ", " \-\-message " " \fIMESSAGE\fR
+Stash description note.
+.TP
+.BR \-c " " \fICL\fR ", " \-\-cl " " \fICL\fR
+Specify target changelist ID for stash operations.
+.TP
+.BR \-k ", " \-\-keep
+Keep local workspace modifications intact after shelving during \fBstash save\fR.
+.RE
+
+.TP
+.BR show
+Display full changelist metadata, affected files, and unified diffs for a submitted or shelved changelist (\fBp4 describe \-du\fR).
+.RS
+.TP
+.BR \-s ", " \-\-stat
+Show summary of modified files without full diff contents.
+.RE
+
+.TP
+.BR clean
+Remove untracked and unreconciled files from the workspace directory tree (\fBp4 clean\fR).
+.RS
+.TP
+.BR \-f ", " \-\-force
+Execute file deletions without interactive confirmation.
+.TP
+.BR \-n ", " \-\-dry\-run
+Preview files that would be removed without deleting anything.
+.TP
+.B \-d
+Recursively delete empty untracked directories.
+.RE
+
+.TP
+.BR blame
+Annotate each line of a file with revision numbers, changelist IDs, authors, and dates (\fBp4 annotate\fR).
+.RS
+.TP
+.BR \-c " " \fICL\fR ", " \-\-cl " " \fICL\fR ", " \-\-rev " " \fIREV\fR
+Annotate file as of a specific changelist ID or revision number.
+.TP
+.BR \-u ", " \-\-user
+Display the username for each line.
+.TP
+.BR \-d ", " \-\-date
+Display the modification timestamp for each line.
+.TP
+.BR \-L " " \fIRANGE\fR ", " \-\-line\-range " " \fIRANGE\fR
+Filter annotation output to a specific line range (e.g. \fB10,50\fR).
+.TP
+.BR \-q ", " \-\-quiet
+Suppress depot file header information.
+.RE
+
+.TP
+.BR branch ", " br
+List, create, or delete Perforce streams, translating Git branch workflows.
+.RS
+.TP
+.BR \-a ", " \-\-all
+List all depot streams on the Perforce server.
+.TP
+.BR \-d " " \fISTREAM\fR ", " \-\-delete " " \fISTREAM\fR
+Delete the specified stream specification.
+.TP
+.BR \-P " " \fIPARENT\fR ", " \-\-parent " " \fIPARENT\fR
+Specify the parent stream path when creating a new child stream.
+.TP
+.BR \-t " " \fITYPE\fR ", " \-\-type " " \fITYPE\fR
+Stream type: \fBdevelopment\fR, \fBrelease\fR, \fBmainline\fR, \fBvirtual\fR, or \fBtask\fR.
+.TP
+.BR \-v ", " \-\-verbose
+Display verbose stream metadata.
+.RE
+
+.TP
+.BR switch ", " sw
+Switch the client workspace to a target Perforce stream. See \fBgfp\-switch\fR(1).
+.RS
+.TP
+.BR \-c ", " \-\-create
+Create a new stream specification before switching to it.
+.TP
+.BR \-l ", " \-\-list
+List all streams available for switching.
+.TP
+.BR \-P " " \fIPARENT\fR ", " \-\-parent " " \fIPARENT\fR
+Specify parent stream when creating a new stream.
+.TP
+.BR \-t " " \fITYPE\fR ", " \-\-type " " \fITYPE\fR
+Specify stream type when creating a new stream (default: \fBdevelopment\fR).
+.TP
+.BR \-s ", " \-\-stash
+Automatically shelve open workspace changes before switching and unshelve after switching completes.
+.RE
+
+.TP
+.BR clone
+Clone a depot path or stream into a new directory, create a dedicated Perforce client workspace with Git-like options (\fBallwrite clobber nocompress unlocked\fR), and sync depot files.
+.RS
+.TP
+.BR \-c " " \fICLIENT\fR ", " \-\-client " " \fICLIENT\fR
+Name of the Perforce client workspace to create (defaults to \fIuser\fR_\fIdir\fR).
+.TP
+.BR \-d " " \fIDIR\fR ", " \-\-dir " " \fIDIR\fR
+Target directory to clone into.
+.RE
+
+.TP
+.BR reopen
+Move opened files between changelists (e.g. from the default changelist to a numbered pending changelist).
+.RS
+.TP
+.BR \-c " " \fICL\fR ", " \-\-cl " " \fICL\fR
+Target changelist ID, or \fBdefault\fR.
+.RE
+
+.TP
+.BR restore
+Restore working tree files or discard/delete pending changelists.
+.RS
+.TP
+.BR \-k ", " \-\-keep
+Keep disk modifications intact when reverting changelist files.
+.TP
+.BR \-s ", " \-\-staged
+Unstage files from changelists while preserving working tree changes on disk (\fBp4 revert \-k\fR).
+.TP
+.BR \-c " " \fICL\fR ", " \-\-cl " " \fICL\fR
+Specify pending changelist ID to revert, delete server-side shelves, and purge atomically.
+.TP
+.BR \-f ", " \-\-force
+Force revert of files or discard of changes.
+.TP
+.BR \-W ", " \-\-worktree
+Discard local modifications in the working tree.
+.RE
+
+.TP
+.BR resolve
+Resolve conflicts between local workspace modifications and depot revisions (\fBp4 resolve\fR).
+.RS
+.TP
+.B \-\-ours
+Accept workspace revision and ignore conflicting depot edits (\fBp4 resolve \-ay\fR).
+.TP
+.B \-\-theirs
+Accept depot revision and overwrite local workspace edits (\fBp4 resolve \-at\fR).
+.TP
+.B \-\-am
+Automatically resolve non-conflicting changes (\fBp4 resolve \-am\fR).
+.TP
+.BR \-n ", " \-\-dry\-run
+Preview resolution actions without modifying files.
+.RE
+
+.TP
+.BR rebase
+Rebase, squash, or interactively manipulate pending changelists.
+.RS
+.TP
+.BR \-s " " \fISOURCE_CL\fR ", " \-\-squash " " \fISOURCE_CL\fR
+Source pending changelist to merge/squash into the target changelist.
+.TP
+.BR \-\-onto " " \fITARGET_CL\fR
+Target pending changelist receiving the reopened files.
+.TP
+.BR \-i ", " \-\-interactive
+Interactively select pending changelists to reorder, squash, or drop.
+.TP
+.BR \-m " " \fIMESSAGE\fR ", " \-\-message " " \fIMESSAGE\fR
+New commit description for the combined changelist.
+.RE
+
+.TP
+.BR completion
+Output shell completion script for Bash, Zsh, or TCSH.
+.RS
+.TP
+.I shell
+Target shell format: \fBbash\fR, \fBzsh\fR, or \fBtcsh\fR.
+.RE
+
+.SH ENVIRONMENT VARIABLES
+.TP
+.B P4PORT
+The host and port of the Perforce Helix Core server (e.g. \fBperforce:1666\fR). If unset, resolved via \fBp4 set\fR or \fBp4 info\fR.
+.TP
+.B P4USER
+The Perforce username. If unset, resolved via \fBp4 set\fR, \fBp4 info\fR, or the system \fBUSER\fR variable.
+.TP
+.B P4CLIENT
+The Perforce client workspace name. If unset, resolved via \fBp4 set\fR or \fBp4 info\fR.
+.TP
+.B GFP_SUBMIT_QUEUE_URL
+HTTP/HTTPS URL of the Jenkins Gated Submit Queue validation job. Used by \fBgfp push\fR to report verification queue progress.
+.TP
+.B GFP_PUSH_MODE
+Default submit behavior for \fBgfp push\fR. Set to \fBdirect\fR to default to direct depot submission (\fBp4 submit\fR), or \fBgated\fR (default) for pre-commit CI validation.
+.TP
+.B GFP_COMMAND
+Exported by \fBgfp\fR to lifecycle hooks, containing the active subcommand name (e.g. \fBcommit\fR).
+.TP
+.B GFP_HOOK_STAGE
+Exported by \fBgfp\fR to lifecycle hooks, containing either \fBpre\fR or \fBpost\fR.
+.TP
+.B GFP_WORKSPACE_ROOT
+Exported by \fBgfp\fR to lifecycle hooks, containing the absolute filesystem path of the workspace root.
+.TP
+.B GFP_ARGS
+Exported by \fBgfp\fR to lifecycle hooks, containing the raw arguments passed to the subcommand.
+
+.SH CONFIGURATION FILES
+.B gfp
+loads configuration files hierarchically, merging global settings with workspace-specific overrides:
+
+.IP 1. 4
+\fB~/.gfp/config.json\fR (User-global configuration)
+.IP 2. 4
+\fB<workspace_root>/.gfp/config.json\fR (Workspace-local configuration)
+.IP 3. 4
+\fB~/.gfp/aliases.json\fR and \fB<workspace_root>/.gfp/aliases.json\fR (Custom command aliases)
+.IP 4. 4
+\fB~/.gfp/plugins.json\fR and \fB<workspace_root>/.gfp/plugins.json\fR (Declarative external commands)
+
+.SS Configuration JSON Schema Example
+.nf
+{
+    "submit_queue_url": "http://ci.corp.local/job/gfp-submit-queue/",
+    "push_mode": "gated",
+    "aliases": {
+        "stc": "status -c",
+        "ci-all": "commit -a",
+        "review": "push --dry-run"
+    }
+}
+.fi
+
+.SH LIFECYCLE HOOKS
+.B gfp
+provides Git-like lifecycle hook automation. Hook scripts can be written in any executable scripting language (Bash, Python, etc.) and placed in either:
+.IP \(bu 2
+\fB<workspace_root>/.gfp/hooks/\fR (workspace-scoped hooks)
+.IP \(bu 2
+\fB~/.gfp/hooks/\fR (user-global hooks)
+
+.SS Hook Naming Convention
+Hooks follow the convention \fIstage\fR\fB\-\fR\fIcommand\fR or \fIstage\fR\fB_\fR\fIcommand\fR:
+.TP
+.BR pre\-commit ", " pre_commit
+Executed before creating a pending changelist. If the script exits with a non-zero exit code, changelist creation is aborted immediately.
+.TP
+.BR post\-commit ", " post_commit
+Executed after a changelist is successfully created.
+.TP
+.BR pre\-push ", " pre_push
+Executed before submitting or shelving a changelist.
+.TP
+.BR post\-push ", " post_push
+Executed after a changelist is successfully submitted or shelved.
+
+.SH EXAMPLES
+.TP
+.B Clone a Perforce stream into a new Git-like workspace:
+.nf
+$ gfp clone //stream/main my-project
+$ cd my-project
+.fi
+
+.TP
+.B Check workspace status:
+.nf
+$ gfp status
+.fi
+
+.TP
+.B Stage files and create a pending changelist:
+.nf
+$ gfp add src/main.py
+$ gfp commit -m "feat: add entrypoint pipeline"
+.fi
+
+.TP
+.B Diff local modifications against the depot:
+.nf
+$ gfp diff --stat
+$ gfp diff
+.fi
+
+.TP
+.B Shelve working changes (stash):
+.nf
+$ gfp stash save -m "WIP: refactoring parser"
+$ gfp stash pop
+.fi
+
+.TP
+.B Submit changes to depot:
+.nf
+# Via Jenkins gated submit queue (default)
+$ gfp push
+
+# Direct submit to depot (bypassing CI gate)
+$ gfp push -f
+.fi
+
+.TP
+.B Switch streams with auto-stashing:
+.nf
+$ gfp switch -s //stream/dev-feature
+.fi
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+General error (e.g. invalid arguments, missing executable, Perforce command failure).
+.TP
+.B >1
+Hook failure exit code or Perforce exit code propagated to the caller.
+
+.SH SEE ALSO
+.BR gfp\-commit (1),
+.BR gfp\-push (1),
+.BR gfp\-switch (1),
+.BR p4 (1),
+.BR git (1)
+.SH AUTHOR
+eidotal
+.SH COPYRIGHT
+Copyright \(co 2026 eidotal. Released under the Apache License, Version 2.0.

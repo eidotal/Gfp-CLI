@@ -1,0 +1,230 @@
+pipeline {
+    agent any
+
+    options {
+        ansiColor('xterm')
+        timestamps()
+        timeout(time: 15, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '5', daysToKeepStr: '3', artifactNumToKeepStr: '15'))
+    }
+
+    environment {
+        P4PORT   = 'p4server:1666'
+        P4USER   = 'jenkins_bot'
+        P4CLIENT = "jenkins_ci_${env.BUILD_TAG}"
+        PATH     = "/opt/venv/bin:${env.PATH}"
+        OUTPUTS  = "outputs"
+    }
+
+    stages {
+        stage('Initialize Ephemeral Workspace') {
+            steps {
+                sh """
+                    echo "=== Preparing Ephemeral Perforce Workspace ${P4CLIENT} ==="
+                    p4 --field "Root=${WORKSPACE}" \\
+                       --field "Host=" \\
+                       --field "Options=allwrite clobber nocompress unlocked" \\
+                       client -o -S ${params.STREAM} ${P4CLIENT} | p4 client -i
+
+                    echo "Syncing latest revisions from ${params.STREAM}..."
+                    p4 -c ${P4CLIENT} sync -f ...
+
+                    mkdir -p ./${OUTPUTS}
+                """
+            }
+        }
+        stage('Unshelve Proposed Changelist') {
+            steps {
+                sh """
+                    echo "=== Unshelving Changelist ${params.CHANGELIST} (Author: ${params.USER}) ==="
+                    p4 -c ${P4CLIENT} unshelve -s ${params.CHANGELIST}
+                    p4 -c ${P4CLIENT} opened
+                """
+            }
+        }
+        stage('Quality Gate') {
+            parallel {
+                stage('Flake8 Linter & Syntax') {
+                    steps {
+                        sh """
+                            echo "=== Running Python Syntax Validation ==="
+
+                            find . -name "*.py" -not -path "*/.*" -not -path "./docker/workspace/*" -exec python3 -m py_compile {} +
+
+                            echo "=== Running Flake8 Linter ==="
+
+                            set +e
+                            flake8 . --max-line-length=100 --exclude=.git,__pycache__,docker/workspace,${OUTPUTS} \
+                                --show-source --statistics --output-file=${OUTPUTS}/flake8.log
+                            FLAKE8_EXIT=\$?
+                            set -e
+
+                            cat ${OUTPUTS}/flake8.log
+
+                            # Exit non-zero if flake8 found violations
+                            if [ "\${FLAKE8_EXIT}" -ne 0 ]; then
+                                echo "Quality Gate Failed: Flake8 violations detected!"
+                                exit \${FLAKE8_EXIT}
+                            fi
+                        """
+                    }
+                    post {
+                        always {
+                            recordIssues(
+                                enabledForFailure: true,
+                                tools: [flake8(pattern: "${OUTPUTS}/flake8.log")],
+                                qualityGates: [[threshold: 1, type: 'TOTAL', criticality: 'FAILURE']]
+                            )
+                        }
+                    }
+                }
+
+                stage('Pytest') {
+                    steps {
+                        sh """
+                            echo "=== Running Automated Tests ==="
+                            TEST_SUITE_FOUND=0
+                            if [ -d "tests" ] || [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
+                                TEST_SUITE_FOUND=1
+                                pytest -v --junitxml=${OUTPUTS}/pytest-results.xml
+                            fi
+
+                            if [ "\${TEST_SUITE_FOUND}" -eq 0 ]; then
+                                echo "No test suite detected. Skipping test execution."
+                            fi
+                        """
+                    }
+                    post {
+                        always {
+                            junit testResults: "${OUTPUTS}/pytest-results.xml", allowEmptyResults: true
+                        }
+                    }
+                }
+            }
+        }
+        stage('Atomic Promotion to Mainline') {
+            steps {
+                sh """
+                    DESC=\$(p4 describe -s ${params.CHANGELIST} 2>/dev/null || true)
+                    if echo "\${DESC}" | grep -Eqi "Auto-stash|Stash:"; then
+                        echo "Changelist ${params.CHANGELIST} is a local stash/switch. Skipping promotion to mainline."
+                        exit 0
+                    fi
+
+                    echo "=== Detecting Original Client Workspace ==="
+                    ORIG_CLIENT=\$(p4 change -o ${params.CHANGELIST} | grep '^Client:' | cut -d: -f2 | tr -d ' \\t')
+                    echo "Original Client Workspace: \${ORIG_CLIENT}"
+
+                    echo "=== Reverting Open Files on Original Workspace (Metadata Only) ==="
+                    if [ -n "\${ORIG_CLIENT}" ]; then
+                        p4 revert -k -C "\${ORIG_CLIENT}" -c ${params.CHANGELIST} //... || true
+                    fi
+
+                    echo "=== Transferring Changelist Ownership & Client to jenkins_bot ==="
+                    p4 change -o ${params.CHANGELIST} | \\
+                        sed -e 's/^User:.*/User:\\tjenkins_bot/' \\
+                            -e "s/^Client:.*/Client:\\t${P4CLIENT}/" | \\
+                        p4 change -f -i
+
+                    echo "=== Reverting Ephemeral Workspace Opened Files ==="
+                    p4 -c ${P4CLIENT} revert ... || true
+
+                    echo "=== Submitting Shelved Changelist ${params.CHANGELIST} to ${params.STREAM} ==="
+                    p4 -c ${P4CLIENT} submit -e ${params.CHANGELIST}
+                    echo "Successfully promoted changelist ${params.CHANGELIST} into ${params.STREAM}!"
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            // Archives logs and reports even if stages fail
+            archiveArtifacts artifacts: "${env.OUTPUTS}/**", allowEmptyArchive: true
+
+            script {
+                def status = currentBuild.currentResult ?: 'UNKNOWN'
+                def isSuccess = (status == 'SUCCESS')
+                def statusColor = isSuccess ? '#28a745' : '#dc3545'
+                def recipient = params.NOTIFICATION_EMAIL ? params.NOTIFICATION_EMAIL.trim() : ""
+                if (!recipient && params.USER) {
+                    try {
+                        def p4UserEmail = sh(
+                            script: "p4 user -o ${params.USER} 2>/dev/null | grep '^Email:' | awk '{print \$2}'",
+                            returnStdout: true
+                        ).trim()
+                        if (p4UserEmail) {
+                            recipient = p4UserEmail
+                        }
+                    } catch (Exception e) {
+                        echo "Notice: Could not query Perforce for user email: ${e.message}"
+                    }
+                }
+                if (!recipient) {
+                    recipient = env.GMAIL_USER ?: "admin@example.local"
+                }
+
+                def emailSubject = "[GFP CI] [${status}] Changelist ${params.CHANGELIST ?: 'N/A'} - ${params.STREAM ?: '//stream/main'}"
+                def emailBody = """
+                    <!DOCTYPE html>
+                    <html>
+                    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #e1e4e8; border-radius: 6px; overflow: hidden;">
+                            <div style="background-color: ${statusColor}; color: white; padding: 16px 20px;">
+                                <h2 style="margin: 0;">GFP Gated Submit Queue: ${status}</h2>
+                            </div>
+                            <div style="padding: 20px;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="padding: 6px 0; font-weight: bold; width: 140px;">Changelist:</td>
+                                        <td style="padding: 6px 0;">${params.CHANGELIST ?: 'N/A'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 6px 0; font-weight: bold;">Author:</td>
+                                        <td style="padding: 6px 0;">${params.USER ?: 'devuser'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 6px 0; font-weight: bold;">Destination Stream:</td>
+                                        <td style="padding: 6px 0;">${params.STREAM ?: '//stream/main'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 6px 0; font-weight: bold;">Build Number:</td>
+                                        <td style="padding: 6px 0;">#${env.BUILD_NUMBER}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 6px 0; font-weight: bold;">Duration:</td>
+                                        <td style="padding: 6px 0;">${currentBuild.durationString.replace(' and counting', '')}</td>
+                                    </tr>
+                                </table>
+                                <div style="margin-top: 20px; text-align: center;">
+                                    <a href="${env.BUILD_URL}" style="display: inline-block; background-color: #0366d6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold;">View Build Console & Details</a>
+                                </div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                """
+
+                try {
+                    emailext(
+                        to: recipient,
+                        subject: emailSubject,
+                        body: emailBody,
+                        mimeType: 'text/html',
+                        attachLog: !isSuccess,
+                        compressLog: false
+                    )
+                } catch (Exception e) {
+                    echo "Email notification skipped or failed: ${e.message}"
+                }
+            }
+        }
+        cleanup {
+            sh """
+                p4 -c ${P4CLIENT} revert ... || true
+                p4 client -d ${P4CLIENT} || true
+            """
+            cleanWs notFailBuild: true
+        }
+    }
+}

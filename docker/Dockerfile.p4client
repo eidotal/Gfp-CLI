@@ -1,0 +1,176 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:1
+ENV SHELL=bash
+ENV NO_AT_BRIDGE=1
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
+ARG P4PORT=p4server:1666
+ARG P4USER=devuser
+ARG P4CLIENT=devuser_ws
+
+ARG USERNAME=devuser
+ARG USER_UID=1000
+ARG USER_GID=1000
+ARG VNC_PWD="VNC_PWD"
+
+# Install complete XFCE desktop environment, themes, fonts, VNC, and P4V dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        sudo \
+        curl \
+        wget \
+        bash \
+        zsh \
+        firefox \
+        tree \
+        vim \
+        vim-gtk \
+        nano \
+        less \
+        git \
+        make \
+        cmake \
+        tar \
+        perl \
+        python3 \
+        python3-pip \
+        python3-dev \
+        ca-certificates \
+        netcat-openbsd \
+        bash-completion \
+        tigervnc-standalone-server \
+        tigervnc-tools \
+        novnc \
+        websockify \
+        dbus-x11 \
+        x11-xserver-utils \
+        xfce4 \
+        xfce4-terminal \
+        xfdesktop4 \
+        xfwm4 \
+        thunar \
+        tango-icon-theme \
+        fonts-dejavu-core \
+        libnss3 \
+        libnspr4 \
+        libegl1 \
+        libopengl0 \
+        libxcb-icccm4 \
+        libxcb-keysyms1 \
+        libxcb-shape0 \
+        libxcb-image0 \
+        libxcb-render-util0 \
+        libxcb-sync1 \
+        libxcb-xfixes0 \
+        libxcb-xinerama0 \
+        libxcb-cursor0 \
+        libxkbcommon-x11-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fix noVNC root index access
+RUN ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
+
+# Install Perforce CLI (p4) and Visual Client (p4v)
+RUN curl -fsSL https://cdist2.perforce.com/perforce/r24.1/bin.linux26x86_64/p4 -o /usr/local/bin/p4 \
+    && chmod +x /usr/local/bin/p4 \
+    && mkdir -p /opt/perforce /tmp/p4v \
+    && curl -fsSL https://cdist2.perforce.com/perforce/r24.1/bin.linux26x86_64/p4v.tgz -o /tmp/p4v/p4v.tgz \
+    && tar -xzf /tmp/p4v/p4v.tgz -C /opt/perforce --strip-components=1 \
+    && ln -s /opt/perforce/bin/p4v /usr/local/bin/p4v \
+    && rm -rf /tmp/p4v
+
+# Setup user and sudoers
+RUN groupadd --gid ${USER_GID} ${USERNAME} && \
+    useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${USERNAME} && \
+    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
+    chmod 0440 /etc/sudoers.d/${USERNAME}
+
+# Configure VNC password and sanitized xstartup
+RUN <<EOF
+    mkdir -p /home/${USERNAME}/.vnc /home/${USERNAME}/Desktop /home/${USERNAME}/workspace
+    echo "${VNC_PWD}" | vncpasswd -f > /home/${USERNAME}/.vnc/passwd
+    chmod 600 /home/${USERNAME}/.vnc/passwd
+    cat <<'XSTART' > /home/${USERNAME}/.vnc/xstartup
+#!/bin/sh
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+exec dbus-launch --exit-with-session startxfce4
+XSTART
+    chmod +x /home/${USERNAME}/.vnc/xstartup
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
+EOF
+
+# Suppress XFCE Polkit prompts
+RUN <<EOF
+    mkdir -p /etc/xdg/autostart
+    echo "[Desktop Entry]" > /etc/xdg/autostart/xfce-polkit.desktop
+    echo "Hidden=true" >> /etc/xdg/autostart/xfce-polkit.desktop
+EOF
+
+# Desktop Shortcuts
+RUN cat <<EOF > /home/${USERNAME}/Desktop/p4v.desktop
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Helix Visual Client (P4V)
+Exec=/usr/local/bin/p4v
+Icon=system-file-manager
+Path=/home/${USERNAME}/workspace
+Terminal=false
+Categories=Development;
+EOF
+RUN chmod +x /home/${USERNAME}/Desktop/p4v.desktop
+
+RUN cat <<EOF > /home/${USERNAME}/Desktop/terminal.desktop
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Terminal
+Exec=xfce4-terminal
+Icon=utilities-terminal
+Path=/home/${USERNAME}/workspace
+Terminal=false
+Categories=System;TerminalEmulator;
+EOF
+RUN chmod +x /home/${USERNAME}/Desktop/terminal.desktop
+
+# Shell environment configuration
+RUN cat <<'EOF' >> /home/${USERNAME}/.bashrc
+export PATH="/opt/gfp-cli:/usr/local/bin:$PATH"
+EOF
+
+RUN cat <<'EOF' >> /home/${USERNAME}/.bashrc
+alias v="vim"
+alias gv="gvim"
+alias c="clear"
+alias ll="ls -l"
+alias lla="ll -a"
+alias ..="cd .."
+
+if command -v gfp >/dev/null 2>&1; then
+    eval "$(gfp completion bash 2>/dev/null || true)"
+elif [ -f "/opt/gfp-cli/gfp.py" ]; then
+    alias gfp="python3 /opt/gfp-cli/gfp.py"
+    eval "$(python3 /opt/gfp-cli/gfp.py completion bash 2>/dev/null || true)"
+fi
+EOF
+
+COPY p4client-entrypoint.sh /usr/local/bin/p4client-entrypoint.sh
+RUN chmod +x /usr/local/bin/p4client-entrypoint.sh \
+    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
+
+# p4enviro configuration
+RUN cat <<EOF >> /home/${USERNAME}/.p4enviro
+P4PORT=${P4PORT}
+P4USER=${P4USER}
+P4CONFIG=./.p4config
+EOF
+
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}/workspace
+
+EXPOSE 5901 6080
+
+ENTRYPOINT ["/usr/local/bin/p4client-entrypoint.sh"]
